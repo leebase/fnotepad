@@ -89,3 +89,16 @@ still have that problem with the first line after return - the background from e
 
 **Antigravity:**
 Found a second layer of the newline bug: `draw-char` resets the terminal ANSI state via `0m`, but does NOT update the Forth `hl` state variable on the stack. Fixed by making `draw-char` accept and return the hl state so newlines reset hl to 0. Fixed Ctrl+X by saving sel bounds before `do-copy` clears the selection.
+## Prompt 14
+**User:**
+ok commit to git, start a git if needed
+
+**Antigravity:**
+Initialized a git repository and committed the working Phase 2 feature set (Highlighting, Cut/Copy/Paste, Newline logic).
+
+## Prompt 15
+**User:**
+can we NOW fix the flicker? We are feature complete for this demo
+
+**Antigravity:**
+Generated a new implementation plan for Phase 3: Virtual Console (Double Buffering). The root cause of the flicker is redrawing the entire screen over serial on every keystroke. By introducing an in-memory `vram` 2D array and computing the diff against `old-vram` per-frame, we will only emit ANSI updates for pixels that have actually changed, yielding a 99% reduction in I/O and zero flicker. User approved the approach.

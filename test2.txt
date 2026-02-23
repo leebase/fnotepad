@@ -1,0 +1,3 @@
+Hello Lunduke Forum!
+
+We have a Notepad replacement written in Forth!
