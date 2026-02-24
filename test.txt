@@ -1,7 +1,3 @@
-Hello World from File!
-now is 
-f;2B;2B;2B;2Bdas
-fas
-dfsa
-fsa
-f
+Hello Lunduke Forum!
+
+Welcome the GForth clone of Notepad
