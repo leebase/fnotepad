@@ -23,20 +23,58 @@ Forth is not just a language; it's a philosophy. It offers zero abstraction betw
 - **Double-Buffered Rendering:** A custom "Virtual Console" (VRAM) diff engine eliminates terminal flicker by only emitting ANSI codes for changed characters.
 - **Gap Buffer Architecture:** Memory management mimics Emacs, allowing O(1) text insertions and deletions at the cursor.
 - **Notepad-Style UX:** 4-way arrow navigation, Shift+Arrow highlighting, Ctrl+C/X/V clipboard operations, and Ctrl+S saving.
-- **Zero Dependencies:** Written in standard ANS Forth.
+- **Crash-Safe Terminal Handling:** Uses native termios via C FFI; terminal state is always restored even on crashes.
+- **Error Reporting:** Clear status messages for buffer overflow and filename errors (no more silent failures).
 
 ## Quick Start
-### 1. Install gforth
+
+### Prerequisites
+
+- gforth (Forth interpreter)
+- gcc (for building the small termios helper library)
+
 ```bash
-sudo apt-get install gforth
+# Debian/Ubuntu
+sudo apt-get install gforth gcc
+
+# macOS
+brew install gforth gcc
 ```
 
-### 2. Run the Editor
+### Build
+
 ```bash
 git clone https://github.com/yourusername/fnotepad.git
 cd fnotepad
-gforth src/notepad.fs [optional_filename.txt]
+./build.sh
 ```
+
+### Run
+
+```bash
+# Run with empty buffer
+gforth src/notepad.fs
+
+# Run with file
+gforth src/notepad.fs myfile.txt
+```
+
+### Controls
+
+| Key | Action |
+|-----|--------|
+| Arrow keys | Move cursor |
+| Shift + Arrows | Highlight text (selection) |
+| Ctrl+A | Select all |
+| Ctrl+C | Copy selection |
+| Ctrl+X | Cut selection |
+| Ctrl+V | Paste from clipboard |
+| Ctrl+S | Save file |
+| Ctrl+Q | Quit editor |
+| Enter | Insert newline |
+| Backspace | Delete character before cursor |
+
+**Note:** If the terminal is left in an unusable state (rare with current crash-safe handling), type `reset` and press Enter, or run `stty sane`.
 
 ## Learning Paths
 

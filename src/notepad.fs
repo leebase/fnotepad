@@ -3,13 +3,38 @@
 
 \ --- Constants ---
 27 constant ESC
+256 constant MAX-FILENAME-LEN
+65536 constant MAX-BUFFER
 
-\ --- Terminal Raw Mode ---
-: enable-raw-mode  ( -- ) s" stty raw -echo" system ;
-: disable-raw-mode ( -- ) s" stty sane"     system ;
+\ --- Error Status Codes ---
+0 constant ERR-NONE
+1 constant ERR-FILENAME-TOO-LONG
+2 constant ERR-BUFFER-FULL
+
+\ Status message buffer
+variable last-err-code
+create status-msg 256 allot
+variable status-msg-len
+
+: set-status ( c-addr u -- )
+  dup 255 min status-msg-len !
+  status-msg swap cmove
+;
+
+: clear-status ( -- )
+  s" " set-status
+  ERR-NONE last-err-code !
+;
+
+\ --- Terminal Raw Mode via C FFI ---
+library libtermios libtermios_helper.so
+libtermios helper-enable enable_raw_mode
+libtermios helper-disable disable_raw_mode
+
+: enable-raw-mode  ( -- ) helper-enable drop ;
+: disable-raw-mode ( -- ) helper-disable drop ;
 
 \ --- Memory ---
-65536 constant MAX-BUFFER
 create text-buffer    MAX-BUFFER allot
 create clipboard-buf  MAX-BUFFER allot
 
@@ -40,29 +65,41 @@ variable vstyle
   1 needs-redraw !
   -1 sel-anchor !
   0  clipboard-len !
+  clear-status
   vram VRAM-SIZE 0 fill
   old-vram VRAM-SIZE 255 fill \ force full redraw on first pass
 ;
 
 \ --- File I/O ---
-create filename-buf 256 allot
+create filename-buf MAX-FILENAME-LEN allot
 variable filename-len
 
-: set-filename ( c-addr u -- )
-  dup 256 min filename-len !
+: set-filename ( c-addr u -- flag )
+  \ Returns true on success, false if filename too long
+  dup MAX-FILENAME-LEN >= if
+    2drop
+    ERR-FILENAME-TOO-LONG last-err-code !
+    s" Error: Filename too long (>255 chars)" set-status
+    0 exit
+  then
+  dup filename-len !
   filename-buf swap cmove
+  ERR-NONE last-err-code !
+  1
 ;
+
 : get-filename ( -- c-addr u ) filename-buf filename-len @ ;
 
 : handle-args ( -- )
   next-arg dup 0> if
-    2dup set-filename
-    r/w open-file 0= if
-      >r
-      text-buffer MAX-BUFFER r@ read-file throw
-      text-buffer + gap-start !
-      r> close-file throw
-    else drop then
+    2dup set-filename if
+      r/w open-file 0= if
+        >r
+        text-buffer MAX-BUFFER r@ read-file throw
+        text-buffer + gap-start !
+        r> close-file throw
+      else drop then
+    else 2drop then
   else 2drop then
 ;
 
@@ -73,6 +110,7 @@ variable filename-len
       text-buffer gap-start @ text-buffer - r@ write-file throw
       gap-end @ text-buffer MAX-BUFFER + gap-end @ - r@ write-file throw
       r> close-file throw
+      s" File saved." set-status
     else drop then
   then
 ;
@@ -83,19 +121,29 @@ variable filename-len
 
 : request-redraw ( -- ) 1 needs-redraw ! ;
 
-: insert-char ( c -- )
+: insert-char ( c -- flag )
+  \ Returns true if inserted, false if buffer full
   gap-size 0> if
     gap-start @ c!
     1 gap-start +!
     request-redraw
-  else drop then
+    ERR-NONE last-err-code !
+    1
+  else
+    drop
+    ERR-BUFFER-FULL last-err-code !
+    s" Error: Buffer full!" set-status
+    0
+  then
 ;
+
 : delete-char ( -- )
   gap-start @ text-buffer > if
     -1 gap-start +!
     request-redraw
   then
 ;
+
 : move-left ( -- )
   gap-start @ text-buffer > if
     -1 gap-start +!
@@ -104,6 +152,7 @@ variable filename-len
     request-redraw
   then
 ;
+
 : move-right ( -- )
   gap-end @ text-buffer MAX-BUFFER + < if
     gap-end @ c@ gap-start @ c!
@@ -136,6 +185,7 @@ variable filename-len
   else r> 0 ?do move-right loop then
   request-redraw
 ;
+
 : move-down ( -- )
   current-col >r
   begin gap-end @ text-buffer MAX-BUFFER + < gap-end @ c@ 10 <> and while move-right repeat
@@ -206,7 +256,15 @@ variable cut-lo   variable cut-hi
 
 : do-paste ( -- )
   clipboard-len @ 0> if
-    clipboard-len @ 0 ?do clipboard-buf i + c@ insert-char loop
+    \ Check if we have enough space
+    gap-size clipboard-len @ < if
+      ERR-BUFFER-FULL last-err-code !
+      s" Error: Not enough space for paste!" set-status
+      request-redraw
+      exit
+    then
+    clipboard-len @ 0 ?do clipboard-buf i + c@ insert-char drop loop
+    clear-status
   then
 ;
 
@@ -335,6 +393,18 @@ variable osty
   vclear-eol
 ;
 
+: draw-status-bar ( -- )
+  \ Draw status/error message at bottom of screen
+  TERM-ROWS 1- 0 vgotoyx
+  last-err-code @ 0<> if
+    2 vstyle ! \ Error style (highlighted)
+  else
+    0 vstyle ! \ Normal style
+  then
+  status-msg status-msg-len @ vprint
+  vclear-eol
+;
+
 \ draw-char writes to VRAM, handling newlines
 : draw-char ( c -- )
   dup 10 = if
@@ -369,10 +439,14 @@ variable osty
   
   0 vstyle !
   \ Clear the rest of the VRAM screen if text didn't reach the bottom
-  begin vrow @ TERM-ROWS < while 
+  \ Reserve last row for status bar
+  begin vrow @ TERM-ROWS 1- < while 
     vclear-eol
     1 vrow +! 0 vcol !
   repeat
+  
+  \ Draw status bar
+  draw-status-bar
 ;
 
 \ Calculates physical cursor for terminal (1-indexed) based on text buffer
@@ -412,7 +486,17 @@ variable osty
   then
 ;
 
-: run-editor ( -- )
+\ Word to safely clean up terminal state
+: cleanup-editor ( -- )
+  disable-raw-mode
+  clear-screen
+  \ Ensure terminal is in a sane state
+  ansi-start ." 0m"  \ Reset colors
+  ansi-start ." ?25h" \ Show cursor
+;
+
+\ Internal editor loop - this can throw exceptions
+: editor-loop ( -- flag )
   init-buffer handle-args enable-raw-mode
   clear-screen
   
@@ -429,21 +513,40 @@ variable osty
 
     key
 
-    dup 17 = if drop 1 else   \ Ctrl+Q  → quit
-    dup 19 = if save-file drop 0 else   \ Ctrl+S  → save
-    dup 27 = if drop parse-escape 0 else   \ ESC     → arrows
-    dup  1 = if do-select-all drop 0 else   \ Ctrl+A  → select all
-    dup  3 = if do-copy  drop 0 else   \ Ctrl+C  → copy
-    dup 24 = if do-cut   drop 0 else   \ Ctrl+X  → cut
-    dup 22 = if do-paste drop 0 else   \ Ctrl+V  → paste
-    dup 13 = over 10 = or if drop 10 insert-char 0 else   \ Enter
+    dup 17 = if drop 1 else   \ Ctrl+Q  -> quit
+    dup 19 = if save-file drop 0 else   \ Ctrl+S  -> save
+    dup 27 = if drop parse-escape 0 else   \ ESC     -> arrows
+    dup  1 = if do-select-all drop 0 else   \ Ctrl+A  -> select all
+    dup  3 = if do-copy  drop 0 else   \ Ctrl+C  -> copy
+    dup 24 = if do-cut   drop 0 else   \ Ctrl+X  -> cut
+    dup 22 = if do-paste drop 0 else   \ Ctrl+V  -> paste
+    dup 13 = over 10 = or if drop 10 insert-char drop 0 else   \ Enter
     dup 127 = over 8 = or if drop delete-char 0 else   \ Backspace
-    dup 32 >= over 126 <= and if insert-char 0 else   \ Printable
+    dup 32 >= over 126 <= and if insert-char drop 0 else   \ Printable
     drop 0   
     then then then then then then then then then then
   until
+  
+  1  \ Normal exit with quit flag
+;
 
-  disable-raw-mode clear-screen
+\ Public entry point with exception handling
+: run-editor ( -- )
+  ['] editor-loop catch
+  dup 0<> if
+    \ An exception occurred - make sure we still clean up
+    nip  \ Remove the xt, keep exception code
+  then
+  
+  \ Always restore terminal, even if an exception occurred
+  cleanup-editor
+  
+  \ If there was an error, display it
+  dup 0<> if
+    ." Exception occurred: " . cr
+  else
+    drop
+  then
 ;
 
 run-editor

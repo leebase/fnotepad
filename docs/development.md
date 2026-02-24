@@ -27,6 +27,48 @@ To eradicate flicker, we decoupled the UI logic from the terminal pipeline.
 
 This diff engine reduces a 1000-instruction frame down to 1 hardware instruction when typing a single letter.
 
+## 3. Terminal Handling (termios C FFI)
+
+To enable raw mode (reading keys without Enter, no echo), the editor uses a small C helper library (`termios_helper.c`) that interfaces with the Linux termios API.
+
+This replaces the previous `stty` shell calls, providing:
+* **Portability:** No dependency on external shell processes
+* **Precision:** Direct control over terminal flags (ECHO, ICANON, ISIG, etc.)
+* **Performance:** No process spawning overhead
+
+The shared library is loaded via Gforth's `library` and `lib` words:
+```forth
+library libtermios libtermios_helper.so
+libtermios helper-enable enable_raw_mode
+```
+
+## 4. Error Handling & Crash Safety
+
+### Crash-Safe Terminal Restoration
+
+The editor uses Forth's `catch`/`throw` exception mechanism to ensure terminal state is always restored:
+
+```forth
+: run-editor ( -- )
+  ['] editor-loop catch
+  cleanup-editor          \ Always runs, even on exception
+  ...
+;
+```
+
+This prevents the terminal from being left in raw mode if a stack underflow or other exception occurs.
+
+### Status/Error Reporting
+
+A status bar at the bottom of the screen displays user feedback:
+
+| Error Code | Trigger | Message |
+|------------|---------|---------|
+| `ERR-FILENAME-TOO-LONG` | Filename > 255 chars | "Error: Filename too long (>255 chars)" |
+| `ERR-BUFFER-FULL` | Insert/paste exceeds 64KB | "Error: Buffer full!" / "Error: Not enough space for paste!" |
+
+Status messages are cleared on successful operations.
+
 ## Limitations
 
 * **No Virtual Scrolling:** The visual layout maps directly to the absolute logical text buffer length. Files longer than the physical terminal height will either break parsing boundaries or fail to render the bottom. 

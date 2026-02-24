@@ -1,0 +1,12 @@
+# Build artifacts
+libtermios_helper.so
+get_termios_constants
+*.o
+
+# Editor backups
+*~
+*.bak
+
+# Test files
+test_output/
+AGENTS.md
