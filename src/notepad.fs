@@ -26,13 +26,9 @@ variable status-msg-len
   ERR-NONE last-err-code !
 ;
 
-\ --- Terminal Raw Mode via C FFI ---
-library libtermios libtermios_helper.so
-libtermios helper-enable enable_raw_mode
-libtermios helper-disable disable_raw_mode
-
-: enable-raw-mode  ( -- ) helper-enable drop ;
-: disable-raw-mode ( -- ) helper-disable drop ;
+\ --- Terminal Raw Mode ---
+: enable-raw-mode  ( -- ) s" stty raw -echo" system ;
+: disable-raw-mode ( -- ) s" stty sane"     system ;
 
 \ --- Memory ---
 create text-buffer    MAX-BUFFER allot

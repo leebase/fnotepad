@@ -27,20 +27,16 @@ To eradicate flicker, we decoupled the UI logic from the terminal pipeline.
 
 This diff engine reduces a 1000-instruction frame down to 1 hardware instruction when typing a single letter.
 
-## 3. Terminal Handling (termios C FFI)
+## 3. Terminal Handling
 
-To enable raw mode (reading keys without Enter, no echo), the editor uses a small C helper library (`termios_helper.c`) that interfaces with the Linux termios API.
+To enable raw mode (reading keys without Enter, no echo), the editor uses `stty` system calls:
 
-This replaces the previous `stty` shell calls, providing:
-* **Portability:** No dependency on external shell processes
-* **Precision:** Direct control over terminal flags (ECHO, ICANON, ISIG, etc.)
-* **Performance:** No process spawning overhead
-
-The shared library is loaded via Gforth's `library` and `lib` words:
 ```forth
-library libtermios libtermios_helper.so
-libtermios helper-enable enable_raw_mode
+: enable-raw-mode  ( -- ) s" stty raw -echo" system ;
+: disable-raw-mode ( -- ) s" stty sane"     system ;
 ```
+
+While native termios via C FFI would be more efficient, `stty` provides maximum compatibility across Gforth versions.
 
 ## 4. Error Handling & Crash Safety
 

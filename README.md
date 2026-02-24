@@ -23,7 +23,7 @@ Forth is not just a language; it's a philosophy. It offers zero abstraction betw
 - **Double-Buffered Rendering:** A custom "Virtual Console" (VRAM) diff engine eliminates terminal flicker by only emitting ANSI codes for changed characters.
 - **Gap Buffer Architecture:** Memory management mimics Emacs, allowing O(1) text insertions and deletions at the cursor.
 - **Notepad-Style UX:** 4-way arrow navigation, Shift+Arrow highlighting, Ctrl+C/X/V clipboard operations, and Ctrl+S saving.
-- **Crash-Safe Terminal Handling:** Uses native termios via C FFI; terminal state is always restored even on crashes.
+- **Crash-Safe Terminal Handling:** Terminal state is always restored even on crashes using exception handling.
 - **Error Reporting:** Clear status messages for buffer overflow and filename errors (no more silent failures).
 
 ## Quick Start
@@ -31,22 +31,13 @@ Forth is not just a language; it's a philosophy. It offers zero abstraction betw
 ### Prerequisites
 
 - gforth (Forth interpreter)
-- gcc (for building the small termios helper library)
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get install gforth gcc
+sudo apt-get install gforth
 
 # macOS
-brew install gforth gcc
-```
-
-### Build
-
-```bash
-git clone https://github.com/yourusername/fnotepad.git
-cd fnotepad
-./build.sh
+brew install gforth
 ```
 
 ### Run

@@ -73,21 +73,15 @@ Resolution Date: 2026-02-24
 
 ---
 
-### 4. ✅ Runtime shell dependency and platform coupling
+### 4. ⚠️ Runtime shell dependency (Partially Addressed)
 **Original Issue:** Terminal control relied on spawning `stty` through `system`, introducing shell/process dependency.
 
 **Resolution:**
-- Created `termios_helper.c` with native termios implementation
-- Replaced `stty` calls with C FFI functions `enable_raw_mode()` / `disable_raw_mode()`
-- Added `build.sh` script to compile the shared library
-- Updated README with new dependency requirements
+- Attempted C FFI implementation but reverted due to Gforth 0.7.3 compatibility
+- Restored `stty` approach which is widely compatible
+- All other improvements (crash safety, error handling) remain in place
 
-**Changes:**
-```forth
-library libtermios libtermios_helper.so
-libtermios helper-enable enable_raw_mode
-libtermios helper-disable disable_raw_mode
-```
+**Note:** The shell dependency remains but is now properly documented. A native termios FFI implementation would require Gforth 0.7.9+ or other Forth variants with better C FFI support.
 
 ---
 
@@ -95,12 +89,9 @@ libtermios helper-disable disable_raw_mode
 **Original Issue:** `libtermios_helper.so` was committed to the repository.
 
 **Resolution:**
-- Removed committed `libtermios_helper.so` (now built from source)
-- Added `.gitignore` to exclude build artifacts:
-  - `libtermios_helper.so`
-  - `get_termios_constants`
-  - `*.o`
-- Added `build.sh` script for one-command builds
+- Removed committed `libtermios_helper.so`
+- Added `.gitignore` to exclude build artifacts
+- Removed C FFI dependency, so no binary artifacts needed
 
 ---
 
